@@ -1,0 +1,68 @@
+pipeline {
+    agent any
+
+    tools{
+        jdk 'jdk17'
+        maven 'maven3'
+    }
+    
+    environment{
+        SCANNER_HOME = tool 'sonar-scanner'
+    }
+
+    stages {
+        stage('Git Checkout') {
+            steps {
+                git 'https://github.com/jaiswaladi2468/BoardgameListingWebApp.git'
+            }
+        }
+        
+        stage('Compile') {
+            steps {
+                sh 'mvn clean compile'
+            }
+        }
+        
+        stage('Test') {
+            steps {
+                sh 'mvn clean test'
+            }
+        }
+        
+        stage('Build') {
+            steps {
+                sh 'mvn clean package'
+            }
+        }
+        
+        stage('Sonar-Analysis') {
+            steps {
+                withSonarQubeEnv('sonar') {
+                   sh ''' $SCANNER_HOME/bin/sonar-scanner -Dsonar.projectName=BoardgameList \
+                          -Dsonar.projectKey=BoardgameList -Dsonar.java.binaries=. '''
+                 }
+            }
+        }
+        
+       /* stage('Quality Gate Check') {
+            steps {
+                  waitForQualityGate abortPipeline: false
+                } 
+            }*/
+        
+         stage('Trivy Fs Scan') {
+            steps {
+                sh "trivy fs --severity HIGH,MEDIUM ."
+                sh "trivy fs --severity HIGH,MEDIUM -f json -o target/report.json ."
+            }
+        }
+        
+        stage('Trivy Image Scan') {
+            steps {
+                sh "trivy image adijaiswal/shopping-cart:latest"
+                sh "trivy image -f json -o target/docker-report.json adijaiswal/shopping-cart:latest"
+            }
+        }
+        
+    }
+}
