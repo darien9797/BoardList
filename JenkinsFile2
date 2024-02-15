@@ -1,0 +1,30 @@
+pipeline {
+    agent any
+
+    tools{
+        jdk 'jdk11'
+      maven 'maven3'
+    }
+
+  
+    
+    parameters{
+       choice (name : 'CBranch', choices: ['main','develop'] , description :'branch choices')    
+    }
+    
+    
+    stages {
+        stage('Git Checkout') {
+            steps {
+                 git branch: "${params.CBranch}", credentialsId: 'git-credentials', url: 'https://github.com/darien9797/e-kartclone.git'
+            }
+        }
+        
+        stage('Build') {
+            steps {
+                 sh "mvn package"
+            }
+        }
+        
+    }
+}
