@@ -1,0 +1,123 @@
+pipeline {
+    agent any
+
+    tools
+    {
+        jdk 'jdk17'
+        maven 'maven3'
+    }
+
+    environment {
+        SONARQUBE_HOME= tool 'sonar-scanner'
+    }
+
+    stages {
+        stage('Git Checkout') {
+            steps {
+                git branch: 'main', url: 'https://github.com/darien9797/BoardList.git'
+            }
+        }
+        
+        stage('Compile') {
+            steps {
+                sh "mvn compile"
+            }
+        }
+        
+        stage('Unit test') {
+            steps {
+                sh "mvn test"
+            }
+        }
+        
+        
+        stage('Package') {
+            steps {
+                sh "mvn package"
+            }
+        }
+        
+        /* stage('OWASP Dependency Check') {
+            steps {
+                dependencyCheck additionalArguments: ' --scan ./', odcInstallation: 'DC'
+                dependencyCheckPublisher pattern: '**/ // dependency-check-report.xml'
+          //  }
+       // } */
+        
+        stage('SonarQube analysis') {
+            steps {
+                withSonarQubeEnv('sonar') {
+                    sh ''' $SONARQUBE_HOME/bin/sonar-scanner -Dsonar.projectName=Boardgame -Dsonar.projectKey=Boardgame \
+                           -Dsonar.java.binaries=. '''
+    
+                }
+            }
+        }
+        
+        stage('Quality Gate') {
+            steps {
+                waitForQualityGate abortPipeline: false
+            }
+        }
+        
+        stage('Deploy Artificat to Nexus') {
+            steps {
+                withMaven(globalMavenSettingsConfig: 'global-maven-settings', jdk: 'jdk17', maven: 'maven3', mavenSettingsConfig: '', traceability: false) {
+                    nexusArtifactUploader artifacts: [[artifactId: 'database_service_project', classifier: '', file: '/var/lib/jenkins/workspace/Full-stack-CICD/target/database_service_project-0.0.2.jar', type: 'jar']], credentialsId: 'nexus', groupId: 'com.javaproject', nexusUrl: '54.254.6.186:8081/', nexusVersion: 'nexus3', protocol: 'http', repository: 'maven-releases', version: '0.0.2'
+              }
+            
+            }
+        }
+        
+        /*stage('Deploy to Nexus') {
+            steps {
+                withMaven(globalMavenSettingsConfig: 'global-maven-settings', jdk: 'jdk17', maven: 'maven3', mavenSettingsConfig: '', traceability: false) {
+                sh "mvn deploy"
+              }
+            
+            }
+        }*/
+        
+        stage('Docker Build Image') {
+            steps {
+                script{
+                   withDockerRegistry(credentialsId: 'docker', toolName: 'docker') {
+                      sh "docker build -t boardwebapp:latest ."
+                      sh "docker tag boardwebapp:latest darien97/boardwebapp:0.0.2"
+                  }
+                }
+            }
+        }
+        
+       /* stage('Trivy Image Scan') {
+            steps {
+                sh "trivy image darien97/boardwebapp:0.0.2"
+                sh "trivy image -f json -o target/docker-report.json darien97/boardwebapp:0.0.2"
+            }
+        }*/
+        
+        
+        stage('Docker Push Image') {
+            steps {
+                script{
+                   withDockerRegistry(credentialsId: 'docker', toolName: 'docker') {
+                      sh "docker push darien97/boardwebapp:0.0.2"
+                  }
+                }
+            }
+        }
+        
+        stage('Docker Application to Container') {
+            steps {
+                script{
+                   withDockerRegistry(credentialsId: 'docker', toolName: 'docker') {
+                      sh "docker run -d -p 8085:8080 darien97/boardwebapp:0.0.2 "
+                     
+                  }
+                }
+            }
+        }
+        
+        
+    }
+}
